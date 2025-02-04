@@ -1,0 +1,168 @@
+name: Continuous Deployment
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        options: [staging, production]
+        required: true
+
+env:
+  AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+  REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+  REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+  CLUSTER_NAME: ai-intake-platform-aks
+  RESOURCE_GROUP: ai-intake-platform-rg
+
+jobs:
+  deploy-to-aks:
+    name: Deploy to AKS
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    environment:
+      name: ${{ github.event.inputs.environment || 'staging' }}
+      url: ${{ steps.deploy.outputs.deployment-url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+          path: artifacts
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{ env.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: ${{ env.CLUSTER_NAME }}
+
+      - name: Container registry login
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ env.REGISTRY_USERNAME }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+
+      - name: Validate Kubernetes manifests
+        run: |
+          kubectl apply --dry-run=client -f infrastructure/kubernetes/namespaces.yaml
+          kubectl apply --dry-run=client -f infrastructure/kubernetes/configmaps.yaml
+          kubectl apply --dry-run=client -f infrastructure/kubernetes/deployments.yaml
+
+      - name: Create/Update namespaces
+        uses: azure/k8s-deploy@v4
+        with:
+          manifests: |
+            infrastructure/kubernetes/namespaces.yaml
+          namespace: default
+
+      - name: Deploy ConfigMaps
+        uses: azure/k8s-deploy@v4
+        with:
+          manifests: |
+            infrastructure/kubernetes/configmaps.yaml
+          namespace: application-ns
+
+      - name: Deploy backend services
+        id: deploy-backend
+        uses: azure/k8s-deploy@v4
+        with:
+          manifests: |
+            infrastructure/kubernetes/deployments.yaml
+          namespace: application-ns
+          images: |
+            ${{ env.ACR_REGISTRY }}/document-processor:${{ github.sha }}
+            ${{ env.ACR_REGISTRY }}/email-processor:${{ github.sha }}
+          strategy: rolling
+          timeout: 5m
+
+      - name: Deploy frontend services
+        id: deploy-frontend
+        uses: azure/k8s-deploy@v4
+        with:
+          manifests: |
+            infrastructure/kubernetes/deployments.yaml
+          namespace: application-ns
+          images: |
+            ${{ env.ACR_REGISTRY }}/web-ui:${{ github.sha }}
+          strategy: rolling
+          timeout: 5m
+
+      - name: Apply network policies
+        run: |
+          kubectl apply -f infrastructure/kubernetes/network-policies.yaml
+
+      - name: Verify service mesh configuration
+        run: |
+          kubectl get virtualservices,destinationrules -A
+          kubectl get gateways -A
+
+  post-deployment-checks:
+    name: Post-deployment Validation
+    needs: deploy-to-aks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          creds: ${{ env.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: ${{ env.CLUSTER_NAME }}
+
+      - name: Health checks
+        run: |
+          kubectl get pods -A -o wide
+          kubectl get services -A
+          kubectl describe deployments -A
+          kubectl get events -A --sort-by='.lastTimestamp'
+
+      - name: Security validation
+        run: |
+          kubectl auth can-i --list
+          kubectl get podsecuritypolicies
+          kubectl get networkpolicies -A
+
+      - name: Monitor deployment metrics
+        run: |
+          kubectl top nodes
+          kubectl top pods -A
+
+      - name: Verify logging setup
+        run: |
+          kubectl get pods -n logging-ns
+          kubectl logs -n logging-ns -l app=fluentd --tail=10
+
+      - name: Generate deployment report
+        run: |
+          echo "Deployment Status Report" > deployment-report.txt
+          echo "Timestamp: $(date)" >> deployment-report.txt
+          echo "Environment: ${{ github.event.inputs.environment || 'staging' }}" >> deployment-report.txt
+          kubectl get deployments -A -o wide >> deployment-report.txt
+          kubectl get pods -A -o wide >> deployment-report.txt
+
+      - name: Upload deployment report
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-status
+          path: deployment-report.txt
+          retention-days: 30
