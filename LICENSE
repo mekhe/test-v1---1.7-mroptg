@@ -1,0 +1,71 @@
+AI-Driven Application Intake Platform License
+Version 1.0.0
+Last Updated: October 25, 2023
+
+Copyright (c) 2023 Dollar Funding
+
+Permission is hereby granted, free of charge, to any person or organization obtaining a copy of this software and associated documentation files (the "Software"), subject to the following conditions and restrictions:
+
+1. DEFINITIONS
+   "Software" refers to the AI-Driven Application Intake Platform including all source code, documentation, configurations, and associated files.
+   "Sensitive Data" refers to any personal, financial, or business information processed by the Software.
+   "Production Environment" refers to any deployment of the Software processing real merchant cash advance applications.
+
+2. PERMISSIONS
+   Subject to the terms and conditions of this License, you may:
+   a) Use the Software for commercial or non-commercial purposes
+   b) Modify the Software to suit your needs
+   c) Integrate the Software with other systems
+   d) Deploy the Software in production environments
+
+3. DATA PROTECTION REQUIREMENTS
+   When processing Sensitive Data, you must:
+   a) Implement AES-256-GCM encryption for data at rest
+   b) Use TLS 1.3 for data in transit
+   c) Maintain compliance with GDPR, CCPA, SOC 2, and PCI DSS standards
+   d) Implement role-based access control (RBAC)
+   e) Maintain audit logs for all data access
+   f) Ensure secure deletion of data per retention policies
+
+4. ENTERPRISE INTEGRATION OBLIGATIONS
+   For system integration, you must:
+   a) Follow documented API specifications
+   b) Implement required security protocols
+   c) Maintain service level agreements
+   d) Support webhook integration standards
+   e) Comply with rate limiting policies
+
+5. CONDITIONS
+   The above permissions are conditioned upon:
+   a) Maintaining all copyright notices and attributions
+   b) Including a copy of this license with all distributions
+   c) Not using Dollar Funding's name or trademarks without permission
+   d) Implementing all required security measures
+
+6. DISCLAIMER OF WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+7. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+8. COMPLIANCE AND AUDITING
+   You agree to:
+   a) Maintain compliance documentation
+   b) Submit to security audits when requested
+   c) Report security incidents promptly
+   d) Cooperate with compliance investigations
+
+9. TERMINATION
+   This license automatically terminates if you fail to comply with its terms. Upon termination, you must:
+   a) Cease all use of the Software
+   b) Destroy all copies of the Software
+   c) Securely delete all processed data
+   d) Certify compliance with the above
+
+10. GOVERNING LAW
+    This License shall be governed by and construed in accordance with the laws of the State of Delaware, United States, without regard to its conflict of law provisions.
+
+For questions about this license or to report violations, contact:
+legal@dollarfunding.com
+
+END OF LICENSE
