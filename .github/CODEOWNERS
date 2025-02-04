@@ -1,0 +1,36 @@
+# Backend code ownership
+/src/backend/* @backend-team
+
+# Frontend code ownership 
+/src/web/* @frontend-team
+
+# Infrastructure and deployment
+/infrastructure/* @devops-team
+
+# Security-sensitive backend modules
+/src/backend/src/modules/auth/* @security-team
+
+# Platform configuration
+/src/backend/src/config/* @platform-team
+
+# CI/CD workflows
+/.github/workflows/* @devops-team
+
+# Security infrastructure
+/infrastructure/kubernetes/security/* @security-team
+
+# Critical security services
+/src/backend/src/services/encryption.service.ts @security-team
+
+# Platform logging service
+/src/backend/src/services/logger.service.ts @platform-team
+
+# OCR and document processing
+/src/backend/src/modules/ocr/* @ml-team
+/src/web/src/components/documents/* @ml-team @frontend-team
+
+# Security documentation
+SECURITY.md @security-team
+
+# Default owners for everything else
+* @platform-leads
