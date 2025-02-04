@@ -1,0 +1,194 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: ['main', 'develop']
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'yarn.lock'
+  pull_request:
+    branches: ['main', 'develop']
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'yarn.lock'
+
+env:
+  NODE_VERSION: '18.x'
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+          
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            **/node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      # Backend Build & Test
+      - name: Install backend dependencies
+        working-directory: src/backend
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+
+      - name: Run backend linting
+        working-directory: src/backend
+        run: npm run lint
+
+      - name: Run backend tests
+        working-directory: src/backend
+        run: |
+          npm run test:cov
+          npm run test:e2e
+
+      - name: Build backend
+        working-directory: src/backend
+        run: npm run build
+
+      # Frontend Build & Test
+      - name: Install frontend dependencies
+        working-directory: src/web
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+
+      - name: Run frontend linting
+        working-directory: src/web
+        run: npm run lint
+
+      - name: Run frontend tests
+        working-directory: src/web
+        run: npm run test:coverage
+
+      - name: Build frontend
+        working-directory: src/web
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            src/backend/dist
+            src/web/dist
+          retention-days: 7
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: |
+            src/backend/coverage
+            src/web/coverage
+          retention-days: 7
+
+  security-scan:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ['javascript', 'typescript']
+          queries: security-extended
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          cd src/backend && npm ci
+          cd ../web && npm ci
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+
+      - name: Run npm audit
+        run: |
+          cd src/backend && npm audit
+          cd ../web && npm audit
+
+  quality-gates:
+    name: Quality Gates
+    needs: [build-and-test, security-scan]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download test results
+        uses: actions/download-artifact@v3
+        with:
+          name: test-results
+
+      - name: Check test coverage
+        run: |
+          BACKEND_COVERAGE=$(cat backend/coverage/coverage-summary.json | jq -r '.total.lines.pct')
+          FRONTEND_COVERAGE=$(cat web/coverage/coverage-summary.json | jq -r '.total.lines.pct')
+          
+          if (( $(echo "$BACKEND_COVERAGE < 80" | bc -l) )); then
+            echo "Backend test coverage ($BACKEND_COVERAGE%) is below threshold (80%)"
+            exit 1
+          fi
+          
+          if (( $(echo "$FRONTEND_COVERAGE < 80" | bc -l) )); then
+            echo "Frontend test coverage ($FRONTEND_COVERAGE%) is below threshold (80%)"
+            exit 1
+          fi
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+
+      - name: Validate build artifacts
+        run: |
+          if [ ! -d "backend/dist" ] || [ ! -d "web/dist" ]; then
+            echo "Build artifacts are missing"
+            exit 1
+          fi
+
+      - name: Report status
+        if: always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { job, conclusion } = context;
+            const message = conclusion === 'success' 
+              ? '✅ All quality gates passed'
+              : '❌ Quality gates failed';
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: message
+            });
